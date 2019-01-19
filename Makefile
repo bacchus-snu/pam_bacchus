@@ -1,11 +1,13 @@
-OBJECTS = pam_bacchus.so
 CC = gcc
-CFLAGS = -Wall
+TARGET = pam_bacchus.so
+OBJECTS = src/pam_bacchus.o
+CFLAGS = -Wall -O2
+LDFLAGS = -shared -Xlinker -x -lcurl -fPIC
 
-all: $(OBJECTS)
+all: $(TARGET)
 
 clean:
-	rm -f $(OBJECTS) *.o
+	rm -f $(OBJECTS) $(TARGET)
 
-pam_bacchus.so: src/pam_bacchus.c
-	$(CC) -fPIC -shared -Xlinker -x -o $@ $^ -lcurl
+$(TARGET): src/pam_bacchus.o
+	$(CC) -o $@ $^ $(LDFLAGS)
