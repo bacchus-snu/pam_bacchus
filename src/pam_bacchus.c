@@ -45,8 +45,23 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
 
     pam_ret = pam_get_item(pamh, PAM_AUTHTOK, (const void **) &password);
     if (pam_ret != PAM_SUCCESS || !password) {
-        // cannot get password
-        return PAM_AUTH_ERR;
+        struct pam_conv *pam_conv_data = NULL;
+        struct pam_message msg;
+        const struct pam_message *pam_msg = &msg;
+        struct pam_response *pam_resp = NULL;
+        // get pam_conv object
+        pam_ret = pam_get_item(pamh, PAM_CONV, (const void **) &pam_conv_data);
+        if (pam_ret != PAM_SUCCESS || !pam_conv_data) {
+            // cannot get pam_conv object
+            return PAM_AUTH_ERR;
+        }
+
+        const char *prompt = "password: ";
+        msg.msg = prompt;
+        msg.msg_style = PAM_PROMPT_ECHO_OFF;
+
+        pam_conv_data->conv(1, &pam_msg, &pam_resp, pam_conv_data->appdata_ptr);
+        password = (const char *) pam_resp[0].resp;
     }
 
     if (flags & PAM_DISALLOW_NULL_AUTHTOK) {
