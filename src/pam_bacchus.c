@@ -63,6 +63,13 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
 
         pam_conv_data->conv(1, &pam_msg, &pam_resp, pam_conv_data->appdata_ptr);
         password = (const char *) pam_resp[0].resp;
+        // set authtok to pass our authentication token to other modules
+        // for pam_unix.so, you probably have to use try_first_pass or use_first_pass options
+        pam_ret = pam_set_item(pamh, PAM_AUTHTOK, (const void *) password);
+        if (pam_ret != PAM_SUCCESS) {
+            // this can be ignored, but for now, we will make authentication failed
+            return PAM_AUTH_ERR;
+        }
     }
 
     if (flags & PAM_DISALLOW_NULL_AUTHTOK) {
