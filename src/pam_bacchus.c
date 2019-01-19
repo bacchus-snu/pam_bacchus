@@ -37,6 +37,11 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     const char *username = NULL;
     const char *password = NULL;
 
+    struct pam_conv *pam_conv_data = NULL;
+    struct pam_message msg;
+    const struct pam_message *pam_msg = &msg;
+    struct pam_response *pam_resp = NULL;
+
     pam_ret = pam_get_item(pamh, PAM_USER, (const void **) &username);
     if (pam_ret != PAM_SUCCESS || !username) {
         // cannot get username
@@ -45,10 +50,6 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
 
     pam_ret = pam_get_item(pamh, PAM_AUTHTOK, (const void **) &password);
     if (pam_ret != PAM_SUCCESS || !password) {
-        struct pam_conv *pam_conv_data = NULL;
-        struct pam_message msg;
-        const struct pam_message *pam_msg = &msg;
-        struct pam_response *pam_resp = NULL;
         // get pam_conv object
         pam_ret = pam_get_item(pamh, PAM_CONV, (const void **) &pam_conv_data);
         if (pam_ret != PAM_SUCCESS || !pam_conv_data) {
@@ -56,7 +57,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
             return PAM_AUTH_ERR;
         }
 
-        const char *prompt = "password: ";
+        const char *prompt = "Password: ";
         msg.msg = prompt;
         msg.msg_style = PAM_PROMPT_ECHO_OFF;
 
@@ -123,6 +124,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     }
 
     // free(userdata.data);
+    if (pam_conv_data) {
+        memset(pam_resp[0].resp, '\0', strlen(pam_resp[0].resp));
+        free(pam_resp);
+    }
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     curl_global_cleanup();
