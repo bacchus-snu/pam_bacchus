@@ -1,4 +1,4 @@
 # pam_bacchus
-> Linux PAM module for authenticate with id backend
+> Linux PAM module authenticates with id backend
 
 Work in progress...
