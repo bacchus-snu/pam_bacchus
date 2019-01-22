@@ -6,6 +6,8 @@
 #include <security/pam_modules.h>
 #include <curl/curl.h>
 
+#include "utils.h"
+
 #define ID_LOGIN_ENDPOINT "https://id.snucse.org/api/login"
 
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userdata) {
@@ -82,7 +84,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     // TODO: escape json string
     char *post_body = (char *) malloc(sizeof(char) * strlen(format)
             + strlen(username) + strlen(password) - 4 + 1);
-    sprintf(post_body, format, username, password);
+
+    const char *escaped_username = escape_json_string(username);
+    const char *escaped_password = escape_json_string(password);
+    sprintf(post_body, format, escaped_username, escaped_password);
 
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_body);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
