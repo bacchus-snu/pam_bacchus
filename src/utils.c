@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-const char *escape_json_string(const char *original) {
+char *escape_json_string(const char *original) {
     int current_index;
     int len = strlen(original);
     int new_len = len;
