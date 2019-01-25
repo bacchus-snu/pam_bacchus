@@ -81,12 +81,12 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
     const char *format = "{\"username\": \"%s\", \"password\": \"%s\"}";
-    // TODO: escape json string
-    char *post_body = (char *) malloc(sizeof(char) * strlen(format)
-            + strlen(username) + strlen(password) - 4 + 1);
-
     char *escaped_username = escape_json_string(username);
     char *escaped_password = escape_json_string(password);
+
+    char *post_body = (char *) malloc(sizeof(char) * strlen(format)
+            + strlen(escaped_username) + strlen(escaped_password) - 4 + 1);
+
     sprintf(post_body, format, escaped_username, escaped_password);
     free(escaped_username);
     free(escaped_password);
