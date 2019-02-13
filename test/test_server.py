@@ -7,7 +7,7 @@ class AuthentiationServer(BaseHTTPRequestHandler):
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
         try:
-            post_body = json.loads(body)
+            post_body = json.loads(body.decode())
         except json.JSONDecodeError:
             self.send_response(400)
             self.end_headers()

@@ -2,8 +2,6 @@ language: c
 sudo: required
 compiler: gcc
 dist: xenial
-before_script:
-  - "echo \"pam_bacchus test!\""
 script:
-  - "make && sudo cp ./pam_bacchus.so /lib/x86_64-linux-gnu/security/"
-  - "echo \"Done!\""
+  - "make"
+  - "make test"

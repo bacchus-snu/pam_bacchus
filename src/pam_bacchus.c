@@ -8,8 +8,6 @@
 
 #include "utils.h"
 
-#define ID_LOGIN_ENDPOINT "https://id.snucse.org/api/login"
-
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userdata) {
     return size * nmemb;
 }
