@@ -1,8 +1,8 @@
 CC = gcc
 TARGET = pam_bacchus.so
 OBJECTS = src/pam_bacchus.o src/utils.o
-CFLAGS = -Wall -O2
-LDFLAGS = -shared -Xlinker -x -lcurl -fPIC
+CFLAGS = -Wall -O2 -fPIC
+LDFLAGS = -shared -Xlinker -x -lcurl
 
 all: $(TARGET)
 
