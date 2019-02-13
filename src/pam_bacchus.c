@@ -22,7 +22,7 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const c
     return PAM_SUCCESS;
 }
 
-static void parse_param(int argc, const char **argv, params_t *params) {
+static int parse_param(int argc, const char **argv, params_t *params) {
     memset(params, 0, sizeof(params_t));
 
     for (int i = 0; i < argc; i++) {
@@ -30,6 +30,12 @@ static void parse_param(int argc, const char **argv, params_t *params) {
             params->login_endpoint = argv[i] + 4;
         }
     }
+
+    if (params->login_endpoint == NULL) {
+        return PAM_AUTHINFO_UNAVAIL;
+    }
+
+    return 0;
 }
 
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv) {
@@ -38,7 +44,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     const char *password = NULL;
 
     params_t params;
-    parse_param(argc, argv, &params);
+    pam_ret = parse_param(argc, argv, &params);
+    if (pam_ret != 0) {
+        return pam_ret;
+    }
 
     struct pam_conv *pam_conv_data = NULL;
     struct pam_message msg;
