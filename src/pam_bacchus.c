@@ -22,10 +22,23 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const c
     return PAM_SUCCESS;
 }
 
+static void parse_param(int argc, const char **argv, params_t *params) {
+    memset(params, 0, sizeof(params_t));
+
+    for (int i = 0; i < argc; i++) {
+        if (strncmp(argv[i], "url=", 4) == 0) {
+            params->login_endpoint = argv[i] + 4;
+        }
+    }
+}
+
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv) {
     int pam_ret;
     const char *username = NULL;
     const char *password = NULL;
+
+    params_t params;
+    parse_param(argc, argv, &params);
 
     struct pam_conv *pam_conv_data = NULL;
     struct pam_message msg;
@@ -69,7 +82,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         }
     }
 
-    const char *URL = ID_LOGIN_ENDPOINT;
+    const char *URL = params.login_endpoint;
     CURL *curl;
     CURLcode curl_code;
     struct curl_slist *headers = NULL;
