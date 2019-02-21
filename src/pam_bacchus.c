@@ -142,7 +142,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         }
     }
 
-    if (pam_conv_data && pam_resp) {
+    if (pam_conv_data && pam_resp && pam_resp[0].resp) {
         memset(pam_resp[0].resp, '\0', strlen(pam_resp[0].resp));
         free(pam_resp);
     }
