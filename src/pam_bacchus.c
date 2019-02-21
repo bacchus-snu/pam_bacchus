@@ -73,6 +73,11 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
 
         pam_conv_data->conv(1, &pam_msg, &pam_resp, pam_conv_data->appdata_ptr);
         password = (const char *) pam_resp[0].resp;
+        // if conversation function was interrupted, this will be NULL
+        if (password == NULL) {
+            // set password to null authtok
+            password = "";
+        }
         // set authtok to pass our authentication token to other modules
         // for pam_unix.so, you probably have to use try_first_pass or use_first_pass options
         pam_ret = pam_set_item(pamh, PAM_AUTHTOK, (const void *) password);
@@ -137,7 +142,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         }
     }
 
-    if (pam_conv_data) {
+    if (pam_conv_data && pam_resp && pam_resp[0].resp) {
         memset(pam_resp[0].resp, '\0', strlen(pam_resp[0].resp));
         free(pam_resp);
     }

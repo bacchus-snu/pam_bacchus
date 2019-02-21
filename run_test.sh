@@ -16,10 +16,13 @@ python3 ./test/test_server.py &
 SERVER_PID=$!
 sleep 3s
 
-echo "Running test for valid user..."
+echo "Running test for valid input..."
 echo "doge" | ./test/id_test "test" "true"
 
-# echo "Running test for invalid user..."
+echo "Running test for invalid input..."
 echo "not_doge" | ./test/id_test "test" "false"
+
+echo "Running test for null password..."
+./test/id_test "test" "false" < /dev/null
 
 kill ${SERVER_PID}
