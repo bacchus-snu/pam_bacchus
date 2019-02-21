@@ -22,4 +22,7 @@ echo "doge" | ./test/id_test "test" "true"
 echo "Running test for invalid input..."
 echo "not_doge" | ./test/id_test "test" "false"
 
+echo "Running test for null password..."
+./test/id_test "test" "false" < /dev/null
+
 kill ${SERVER_PID}
