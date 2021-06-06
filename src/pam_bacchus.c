@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <syslog.h>
 
@@ -44,6 +45,7 @@ static int parse_param(int argc, const char **argv, params_t *params) {
     }
 
     if (params->login_endpoint == NULL) {
+        syslog(LOG_ERR, "Login endpoint not set");
         return PAM_AUTHINFO_UNAVAIL;
     }
 
@@ -70,6 +72,7 @@ static void cleanup_keypair(pam_handle_t *pamh, void *data, int error_status) {
 static int load_keypair(pam_handle_t *pamh, const char *keydir) {
     int fd_keydir = open(keydir, O_DIRECTORY | O_RDONLY);
     if (fd_keydir == -1) {
+        syslog(LOG_ERR, "Failed to open key directory: %s", strerror(errno));
         return PAM_AUTHINFO_UNAVAIL;
     }
 
@@ -82,7 +85,7 @@ static int load_keypair(pam_handle_t *pamh, const char *keydir) {
 
     fd_key = openat(fd_keydir, "tweetnacl.pub", O_RDONLY);
     if (fd_key == -1) {
-        syslog(LOG_ERR, "Failed to open tweetnacl.pub");
+        syslog(LOG_ERR, "Failed to open tweetnacl.pub: %s", strerror(errno));
         cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
         close(fd_keydir);
         return PAM_AUTHINFO_UNAVAIL;
@@ -90,7 +93,11 @@ static int load_keypair(pam_handle_t *pamh, const char *keydir) {
 
     ssize_t public_key_size = read_exact(fd_key, keypair->public_key, crypto_sign_PUBLICKEYBYTES);
     if (public_key_size != crypto_sign_PUBLICKEYBYTES) {
-        syslog(LOG_ERR, "Failed to read tweetnacl.pub");
+        syslog(
+            LOG_ERR,
+            "Failed to read tweetnacl.pub: %s",
+            public_key_size == -1 ? strerror(errno) : "key size mismatch"
+        );
         cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
         close(fd_key);
         close(fd_keydir);
@@ -100,7 +107,7 @@ static int load_keypair(pam_handle_t *pamh, const char *keydir) {
 
     fd_key = openat(fd_keydir, "tweetnacl", O_RDONLY);
     if (fd_key == -1) {
-        syslog(LOG_ERR, "Failed to open tweetnacl");
+        syslog(LOG_ERR, "Failed to open tweetnacl: %s", strerror(errno));
         cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
         close(fd_keydir);
         return PAM_AUTHINFO_UNAVAIL;
@@ -108,7 +115,11 @@ static int load_keypair(pam_handle_t *pamh, const char *keydir) {
 
     ssize_t secret_key_size = read_exact(fd_key, keypair->secret_key, crypto_sign_SECRETKEYBYTES);
     if (secret_key_size != crypto_sign_SECRETKEYBYTES) {
-        syslog(LOG_ERR, "Failed to read tweetnacl");
+        syslog(
+            LOG_ERR,
+            "Failed to read tweetnacl: %s",
+            public_key_size == -1 ? strerror(errno) : "key size mismatch"
+        );
         cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
         close(fd_key);
         close(fd_keydir);
