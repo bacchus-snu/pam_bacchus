@@ -11,7 +11,7 @@ KEYPAIR_DIR=$(mktemp -d)
 sudo cp "./${PAM_MODULE_NAME}" "${PAM_MODULE_PATH}/${PAM_MODULE_NAME}"
 
 sudo mkdir -p ${PAM_CONFIG_PATH}
-echo "auth required pam_bacchus.so url=http://localhost:10101/ keydir=${KEYPAIR_DIR}" | sudo tee ${PAM_CONFIG_PATH}/${PAM_CONFIG_NAME}
+echo "auth required pam_bacchus.so url=http://localhost:10101/ key=${KEYPAIR_DIR}/tweetnacl" | sudo tee ${PAM_CONFIG_PATH}/${PAM_CONFIG_NAME}
 
 python3 ./test/test_server.py &
 SERVER_PID=$!
