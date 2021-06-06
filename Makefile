@@ -6,12 +6,15 @@ LDFLAGS = -shared -Xlinker -x -lcurl
 
 all: $(TARGET)
 
+.PHONY: clean
 clean:
+	$(MAKE) -C test clean
 	rm -f $(OBJECTS) $(TARGET)
-	rm -f test/id_test test/id_test.o
+	rm -f pam_bacchus_genkey src/pam_bacchus_genkey.o
 
-test: test/id_test.o
-	$(CC) -o test/id_test test/id_test.c -lpam -lpam_misc
+.PHONY: test
+test: genkey
+	$(MAKE) -C test
 	./run_test.sh
 
 genkey: src/pam_bacchus_genkey.o src/tweetnacl.o
