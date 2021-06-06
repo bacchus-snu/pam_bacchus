@@ -14,5 +14,8 @@ test: test/id_test.o
 	$(CC) -o test/id_test test/id_test.c -lpam -lpam_misc
 	./run_test.sh
 
+genkey: src/pam_bacchus_genkey.o src/tweetnacl.o
+	$(CC) -o pam_bacchus_genkey $^
+
 $(TARGET): $(OBJECTS)
 	$(CC) -o $@ $^ $(LDFLAGS)
