@@ -21,18 +21,6 @@ static ssize_t write_exact(int fd, const void *buf, size_t len) {
     return count;
 }
 
-void randombytes(unsigned char *buf, unsigned long long n) {
-    size_t count = 0;
-    while (count < n) {
-        size_t read = getrandom(&buf[count], n - count, 0);
-        if (read == -1) {
-            if (errno == EINTR) continue;
-            break;
-        }
-        count += read;
-    }
-}
-
 int main(int argc, char **argv) {
     if (argc > 2) {
         return 1;
