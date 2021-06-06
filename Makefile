@@ -1,6 +1,6 @@
 CC = gcc
 TARGET = pam_bacchus.so
-OBJECTS = src/pam_bacchus.o src/utils.o
+OBJECTS = src/pam_bacchus.o src/utils.o src/tweetnacl.o
 CFLAGS = -Wall -O2 -fPIC
 LDFLAGS = -shared -Xlinker -x -lcurl
 

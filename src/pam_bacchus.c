@@ -1,12 +1,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <syslog.h>
 
 #define PAM_SM_AUTH
 #include <security/pam_modules.h>
 #include <curl/curl.h>
 
+#include "tweetnacl.h"
 #include "utils.h"
+
+#define pubkey_base64_size (((crypto_sign_PUBLICKEYBYTES + 2) / 3) * 4)
+#define signature_base64_size (((crypto_sign_BYTES + 2) / 3) * 4)
 
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userdata) {
     return size * nmemb;
@@ -22,10 +33,13 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const c
 
 static int parse_param(int argc, const char **argv, params_t *params) {
     memset(params, 0, sizeof(params_t));
+    params->keydir = "/etc/bacchus/keypair";
 
     for (int i = 0; i < argc; i++) {
         if (strncmp(argv[i], "url=", 4) == 0) {
             params->login_endpoint = argv[i] + 4;
+        } else if (strncmp(argv[i], "keydir=", 7) == 0) {
+            params->keydir = argv[i] + 7;
         }
     }
 
@@ -33,6 +47,79 @@ static int parse_param(int argc, const char **argv, params_t *params) {
         return PAM_AUTHINFO_UNAVAIL;
     }
 
+    syslog(LOG_INFO, "Using %s for keypair directory", params->keydir);
+    return 0;
+}
+
+static void cleanup_keypair(pam_handle_t *pamh, void *data, int error_status) {
+    if (data == NULL) return;
+
+    keypair_t *keypair = (keypair_t *) data;
+    if (keypair->public_key != NULL) {
+        free(keypair->public_key);
+        keypair->public_key = NULL;
+    }
+    if (keypair->secret_key != NULL) {
+        memset(keypair->secret_key, 0, crypto_sign_SECRETKEYBYTES);
+        free(keypair->secret_key);
+        keypair->secret_key = NULL;
+    }
+    free(data);
+}
+
+static int load_keypair(pam_handle_t *pamh, const char *keydir) {
+    int fd_keydir = open(keydir, O_DIRECTORY | O_RDONLY);
+    if (fd_keydir == -1) {
+        return PAM_AUTHINFO_UNAVAIL;
+    }
+
+    keypair_t *keypair = malloc(sizeof(keypair_t));
+    memset(keypair, 0, sizeof(keypair_t));
+    keypair->public_key = (unsigned char *) malloc(crypto_sign_PUBLICKEYBYTES);
+    keypair->secret_key = (unsigned char *) malloc(crypto_sign_SECRETKEYBYTES);
+
+    int fd_key;
+
+    fd_key = openat(fd_keydir, "tweetnacl.pub", O_RDONLY);
+    if (fd_key == -1) {
+        syslog(LOG_ERR, "Failed to open tweetnacl.pub");
+        cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
+        close(fd_keydir);
+        return PAM_AUTHINFO_UNAVAIL;
+    }
+
+    ssize_t public_key_size = read_exact(fd_key, keypair->public_key, crypto_sign_PUBLICKEYBYTES);
+    if (public_key_size != crypto_sign_PUBLICKEYBYTES) {
+        syslog(LOG_ERR, "Failed to read tweetnacl.pub");
+        cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
+        close(fd_key);
+        close(fd_keydir);
+        return PAM_AUTHINFO_UNAVAIL;
+    }
+    close(fd_key);
+
+    fd_key = openat(fd_keydir, "tweetnacl", O_RDONLY);
+    if (fd_key == -1) {
+        syslog(LOG_ERR, "Failed to open tweetnacl");
+        cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
+        close(fd_keydir);
+        return PAM_AUTHINFO_UNAVAIL;
+    }
+
+    ssize_t secret_key_size = read_exact(fd_key, keypair->secret_key, crypto_sign_SECRETKEYBYTES);
+    if (secret_key_size != crypto_sign_SECRETKEYBYTES) {
+        syslog(LOG_ERR, "Failed to read tweetnacl");
+        cleanup_keypair(pamh, keypair, PAM_DATA_SILENT);
+        close(fd_key);
+        close(fd_keydir);
+        return PAM_AUTHINFO_UNAVAIL;
+    }
+    close(fd_key);
+
+    close(fd_keydir);
+
+    syslog(LOG_INFO, "Keypair loaded");
+    pam_set_data(pamh, "PAM_BACCHUS_KEYPAIR", keypair, cleanup_keypair);
     return 0;
 }
 
@@ -41,8 +128,15 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     const char *username = NULL;
     const char *password = NULL;
 
+    openlog("pam_bacchus", 0, LOG_AUTH);
+
     params_t params;
     pam_ret = parse_param(argc, argv, &params);
+    if (pam_ret != 0) {
+        return pam_ret;
+    }
+
+    pam_ret = load_keypair(pamh, params.keydir);
     if (pam_ret != 0) {
         return pam_ret;
     }
@@ -94,6 +188,20 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         }
     }
 
+    const keypair_t *keypair;
+    pam_get_data(pamh, "PAM_BACCHUS_KEYPAIR", (const void **)&keypair);
+
+    const char *format = "{\"username\": \"%s\", \"password\": \"%s\"}";
+    char *escaped_username = escape_json_string(username);
+    char *escaped_password = escape_json_string(password);
+
+    size_t post_body_len = strlen(format) + strlen(escaped_username) + strlen(escaped_password) - 4;
+    char *post_body = (char *) malloc(sizeof(char) * (post_body_len + 1));
+
+    sprintf(post_body, format, escaped_username, escaped_password);
+    free(escaped_username);
+    free(escaped_password);
+
     const char *URL = params.login_endpoint;
     CURL *curl;
     CURLcode curl_code;
@@ -111,18 +219,36 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
 
     headers = curl_slist_append(headers, "Accept: applicaton/json");
     headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    // pubkey
+    char pubkey_base64[21 + pubkey_base64_size + 1];
+    strcpy(pubkey_base64, "X-Bacchus-Id-Pubkey: ");
+    base64_enc(pubkey_base64 + 21, pubkey_base64_size + 1, keypair->public_key, crypto_sign_PUBLICKEYBYTES);
+    headers = curl_slist_append(headers, pubkey_base64);
+
+    // timestamp
+    char timestamp_str[50];
+    struct timespec tp;
+    clock_gettime(CLOCK_REALTIME, &tp);
+    sprintf(timestamp_str, "X-Bacchus-Id-Timestamp: %ld", tp.tv_sec);
+    headers = curl_slist_append(headers, timestamp_str);
+
+    // signature
+    unsigned long long msg_len = (strlen(timestamp_str) - 24) + post_body_len;
+    unsigned char *signed_msg = malloc(sizeof(unsigned char) * (crypto_sign_BYTES + msg_len + 1));
+    memset(signed_msg, 0, sizeof(unsigned char) * (crypto_sign_BYTES + msg_len + 1));
+    memcpy(&signed_msg[crypto_sign_BYTES], &timestamp_str[24], strlen(timestamp_str) - 24);
+    memcpy(&signed_msg[crypto_sign_BYTES + strlen(timestamp_str) - 24], post_body, post_body_len);
+    crypto_sign(signed_msg, &msg_len, &signed_msg[crypto_sign_BYTES], msg_len, keypair->secret_key);
+
+    char signature_base64[24 + signature_base64_size + 1];
+    strcpy(signature_base64, "X-Bacchus-Id-Signature: ");
+    base64_enc(signature_base64 + 24, signature_base64_size + 1, signed_msg, crypto_sign_BYTES);
+    headers = curl_slist_append(headers, signature_base64);
+    free(signed_msg);
+
+    // headers done
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-    const char *format = "{\"username\": \"%s\", \"password\": \"%s\"}";
-    char *escaped_username = escape_json_string(username);
-    char *escaped_password = escape_json_string(password);
-
-    char *post_body = (char *) malloc(sizeof(char) * strlen(format)
-            + strlen(escaped_username) + strlen(escaped_password) - 4 + 1);
-
-    sprintf(post_body, format, escaped_username, escaped_password);
-    free(escaped_username);
-    free(escaped_password);
 
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_body);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
@@ -136,6 +262,11 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         long response_code;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
         if (response_code != 200) {
+            syslog(
+                LOG_WARNING,
+                "Authentication failed for user %s: status code %ld",
+                username, response_code
+            );
             ret = PAM_AUTH_ERR;
         } else {
             ret = PAM_SUCCESS;

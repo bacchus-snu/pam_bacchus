@@ -1,10 +1,20 @@
 #ifndef __UTILS_H
 #define __UTILS_H
 
+#include <sys/types.h>
+
 char *escape_json_string(const char *original);
+ssize_t read_exact(int fd, void *buf, size_t len);
+int base64_enc(char *out, size_t outsize, const unsigned char *in, const size_t insize);
+
+typedef struct {
+    unsigned char *public_key;
+    unsigned char *secret_key;
+} keypair_t;
 
 typedef struct {
     const char *login_endpoint;
+    const char *keydir;
 } params_t;
 
 #endif
