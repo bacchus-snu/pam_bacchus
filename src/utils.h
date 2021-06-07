@@ -2,7 +2,6 @@
 #define __UTILS_H
 
 #include <sys/types.h>
-#include "tweetnacl.h"
 
 char *escape_json_string(const char *original);
 ssize_t read_exact(int fd, void *buf, size_t len);

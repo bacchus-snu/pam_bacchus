@@ -17,8 +17,9 @@
 #include "tweetnacl.h"
 #include "utils.h"
 
-#define pubkey_base64_size (((crypto_sign_PUBLICKEYBYTES + 2) / 3) * 4)
-#define signature_base64_size (((crypto_sign_BYTES + 2) / 3) * 4)
+#define PAM_ITEM_SECRET_KEY "PAM_BACCHUS_SECRET_KEY"
+#define PUBLIC_KEY_BASE64_SIZE (((crypto_sign_PUBLICKEYBYTES + 2) / 3) * 4)
+#define SIGNATURE_BASE64_SIZE (((crypto_sign_BYTES + 2) / 3) * 4)
 
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userdata) {
     return size * nmemb;
@@ -84,7 +85,7 @@ static int load_keypair(pam_handle_t *pamh, const char *key_path) {
     close(fd_key);
 
     syslog(LOG_INFO, "Keypair loaded");
-    pam_set_data(pamh, "PAM_BACCHUS_SECRET_KEY", secret_key, cleanup_secret_key);
+    pam_set_data(pamh, PAM_ITEM_SECRET_KEY, secret_key, cleanup_secret_key);
     return 0;
 }
 
@@ -154,7 +155,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     }
 
     const unsigned char *secret_key;
-    pam_get_data(pamh, "PAM_BACCHUS_SECRET_KEY", (const void **)&secret_key);
+    pam_get_data(pamh, PAM_ITEM_SECRET_KEY, (const void **)&secret_key);
     const unsigned char *public_key = &secret_key[crypto_sign_SECRETKEYBYTES - crypto_sign_PUBLICKEYBYTES];
 
     const char *format = "{\"username\": \"%s\", \"password\": \"%s\"}";
@@ -187,9 +188,9 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     headers = curl_slist_append(headers, "Content-Type: application/json");
 
     // pubkey
-    char pubkey_base64[21 + pubkey_base64_size + 1];
+    char pubkey_base64[21 + PUBLIC_KEY_BASE64_SIZE + 1];
     strcpy(pubkey_base64, "X-Bacchus-Id-Pubkey: ");
-    base64_enc(pubkey_base64 + 21, pubkey_base64_size + 1, public_key, crypto_sign_PUBLICKEYBYTES);
+    base64_enc(pubkey_base64 + 21, PUBLIC_KEY_BASE64_SIZE + 1, public_key, crypto_sign_PUBLICKEYBYTES);
     headers = curl_slist_append(headers, pubkey_base64);
 
     // timestamp
@@ -207,9 +208,9 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     memcpy(&signed_msg[crypto_sign_BYTES + strlen(timestamp_str) - 24], post_body, post_body_len);
     crypto_sign(signed_msg, &msg_len, &signed_msg[crypto_sign_BYTES], msg_len, secret_key);
 
-    char signature_base64[24 + signature_base64_size + 1];
+    char signature_base64[24 + SIGNATURE_BASE64_SIZE + 1];
     strcpy(signature_base64, "X-Bacchus-Id-Signature: ");
-    base64_enc(signature_base64 + 24, signature_base64_size + 1, signed_msg, crypto_sign_BYTES);
+    base64_enc(signature_base64 + 24, SIGNATURE_BASE64_SIZE + 1, signed_msg, crypto_sign_BYTES);
     headers = curl_slist_append(headers, signature_base64);
     free(signed_msg);
 
