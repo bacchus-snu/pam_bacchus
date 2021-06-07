@@ -201,7 +201,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
 
         // pubkey
         strcpy(pubkey_base64, "X-Bacchus-Id-Pubkey: ");
-        base64_enc(pubkey_base64 + 21, PUBLIC_KEY_BASE64_SIZE + 1, public_key, crypto_sign_PUBLICKEYBYTES);
+        if (base64_enc(pubkey_base64 + 21, PUBLIC_KEY_BASE64_SIZE + 1, public_key, crypto_sign_PUBLICKEYBYTES) < 0) {
+            syslog(LOG_CRIT, "Internal error: base64 encode failed");
+            return PAM_AUTH_ERR;
+        }
         headers = curl_slist_append(headers, pubkey_base64);
 
         // timestamp
@@ -219,7 +222,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         crypto_sign(signed_msg, &msg_len, &signed_msg[crypto_sign_BYTES], msg_len, secret_key);
 
         strcpy(signature_base64, "X-Bacchus-Id-Signature: ");
-        base64_enc(signature_base64 + 24, SIGNATURE_BASE64_SIZE + 1, signed_msg, crypto_sign_BYTES);
+        if (base64_enc(signature_base64 + 24, SIGNATURE_BASE64_SIZE + 1, signed_msg, crypto_sign_BYTES) < 0) {
+            syslog(LOG_CRIT, "Internal error: base64 encode failed");
+            return PAM_AUTH_ERR;
+        }
         headers = curl_slist_append(headers, signature_base64);
         free(signed_msg);
     }
