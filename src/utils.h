@@ -10,6 +10,7 @@ int base64_enc(char *out, size_t outsize, const unsigned char *in, const size_t 
 typedef struct {
     const char *login_endpoint;
     const char *secret_key_path;
+    int publickey_only;
 } params_t;
 
 #endif

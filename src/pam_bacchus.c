@@ -42,6 +42,8 @@ static int parse_param(int argc, const char **argv, params_t *params) {
             params->login_endpoint = argv[i] + 4;
         } else if (strncmp(argv[i], "key=", 4) == 0) {
             params->secret_key_path = argv[i] + 4;
+        } else if (strcmp(argv[i], "publickey_only") == 0) {
+            params->publickey_only = 1;
         }
     }
 
@@ -102,9 +104,15 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         return pam_ret;
     }
 
+    int key_available = 1;
     pam_ret = load_keypair(pamh, params.secret_key_path);
     if (pam_ret != 0) {
-        return pam_ret;
+        if (params.publickey_only) {
+            syslog(LOG_ERR, "Public key auth enforced, aborting");
+            return pam_ret;
+        }
+        syslog(LOG_WARNING, "Falling back to IP address auth");
+        key_available = 0;
     }
 
     struct pam_conv *pam_conv_data = NULL;
@@ -154,10 +162,6 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         }
     }
 
-    const unsigned char *secret_key;
-    pam_get_data(pamh, PAM_ITEM_SECRET_KEY, (const void **)&secret_key);
-    const unsigned char *public_key = &secret_key[crypto_sign_SECRETKEYBYTES - crypto_sign_PUBLICKEYBYTES];
-
     const char *format = "{\"username\": \"%s\", \"password\": \"%s\"}";
     char *escaped_username = escape_json_string(username);
     char *escaped_password = escape_json_string(password);
@@ -187,32 +191,38 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     headers = curl_slist_append(headers, "Accept: applicaton/json");
     headers = curl_slist_append(headers, "Content-Type: application/json");
 
-    // pubkey
     char pubkey_base64[21 + PUBLIC_KEY_BASE64_SIZE + 1];
-    strcpy(pubkey_base64, "X-Bacchus-Id-Pubkey: ");
-    base64_enc(pubkey_base64 + 21, PUBLIC_KEY_BASE64_SIZE + 1, public_key, crypto_sign_PUBLICKEYBYTES);
-    headers = curl_slist_append(headers, pubkey_base64);
-
-    // timestamp
     char timestamp_str[50];
-    struct timespec tp;
-    clock_gettime(CLOCK_REALTIME, &tp);
-    sprintf(timestamp_str, "X-Bacchus-Id-Timestamp: %ld", tp.tv_sec);
-    headers = curl_slist_append(headers, timestamp_str);
-
-    // signature
-    unsigned long long msg_len = (strlen(timestamp_str) - 24) + post_body_len;
-    unsigned char *signed_msg = malloc(sizeof(unsigned char) * (crypto_sign_BYTES + msg_len + 1));
-    memset(signed_msg, 0, sizeof(unsigned char) * (crypto_sign_BYTES + msg_len + 1));
-    memcpy(&signed_msg[crypto_sign_BYTES], &timestamp_str[24], strlen(timestamp_str) - 24);
-    memcpy(&signed_msg[crypto_sign_BYTES + strlen(timestamp_str) - 24], post_body, post_body_len);
-    crypto_sign(signed_msg, &msg_len, &signed_msg[crypto_sign_BYTES], msg_len, secret_key);
-
     char signature_base64[24 + SIGNATURE_BASE64_SIZE + 1];
-    strcpy(signature_base64, "X-Bacchus-Id-Signature: ");
-    base64_enc(signature_base64 + 24, SIGNATURE_BASE64_SIZE + 1, signed_msg, crypto_sign_BYTES);
-    headers = curl_slist_append(headers, signature_base64);
-    free(signed_msg);
+    if (key_available) {
+        const unsigned char *secret_key;
+        pam_get_data(pamh, PAM_ITEM_SECRET_KEY, (const void **)&secret_key);
+        const unsigned char *public_key = &secret_key[crypto_sign_SECRETKEYBYTES - crypto_sign_PUBLICKEYBYTES];
+
+        // pubkey
+        strcpy(pubkey_base64, "X-Bacchus-Id-Pubkey: ");
+        base64_enc(pubkey_base64 + 21, PUBLIC_KEY_BASE64_SIZE + 1, public_key, crypto_sign_PUBLICKEYBYTES);
+        headers = curl_slist_append(headers, pubkey_base64);
+
+        // timestamp
+        struct timespec tp;
+        clock_gettime(CLOCK_REALTIME, &tp);
+        sprintf(timestamp_str, "X-Bacchus-Id-Timestamp: %ld", tp.tv_sec);
+        headers = curl_slist_append(headers, timestamp_str);
+
+        // signature
+        unsigned long long msg_len = (strlen(timestamp_str) - 24) + post_body_len;
+        unsigned char *signed_msg = malloc(sizeof(unsigned char) * (crypto_sign_BYTES + msg_len + 1));
+        memset(signed_msg, 0, sizeof(unsigned char) * (crypto_sign_BYTES + msg_len + 1));
+        memcpy(&signed_msg[crypto_sign_BYTES], &timestamp_str[24], strlen(timestamp_str) - 24);
+        memcpy(&signed_msg[crypto_sign_BYTES + strlen(timestamp_str) - 24], post_body, post_body_len);
+        crypto_sign(signed_msg, &msg_len, &signed_msg[crypto_sign_BYTES], msg_len, secret_key);
+
+        strcpy(signature_base64, "X-Bacchus-Id-Signature: ");
+        base64_enc(signature_base64 + 24, SIGNATURE_BASE64_SIZE + 1, signed_msg, crypto_sign_BYTES);
+        headers = curl_slist_append(headers, signature_base64);
+        free(signed_msg);
+    }
 
     // headers done
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
