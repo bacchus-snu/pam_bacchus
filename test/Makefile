@@ -1,9 +1,10 @@
+CFLAGS = -Wall -O2
+
 all: id_test check_signature
 
 .PHONY: clean
 clean:
-	rm -f id_test check_signature
-	rm -f id_test.o check_signature.o
+	rm -f *.o id_test check_signature
 
 id_test: id_test.o
 	$(CC) -o $@ $^ -lpam -lpam_misc
