@@ -1,6 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <unistd.h>
+#include <errno.h>
+
 char *escape_json_string(const char *original) {
     int current_index;
     int len = strlen(original);
@@ -60,4 +63,55 @@ char *escape_json_string(const char *original) {
     result[new_len] = '\0';
 
     return result;
+}
+
+ssize_t read_exact(int fd, void *buf, size_t len) {
+    size_t count = 0;
+    while (count < len) {
+        ssize_t read_count = read(fd, buf + count, len - count);
+        if (read_count < 0) {
+          if (read_count == EINTR) continue;
+          return read_count;
+        }
+        if (read_count == 0) break;
+        count += read_count;
+    }
+    return count;
+}
+
+int base64_enc(char *out, size_t outsize, const unsigned char *in, const size_t insize) {
+    static const char table[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    if (outsize <= ((insize + 2) / 3) * 4) {
+        return -1;
+    }
+
+    size_t outcount = 0;
+    for (size_t count = 0; count < insize; count += 3) {
+        size_t len = insize - count;
+        if (len > 3) len = 3;
+
+        unsigned int value = 0;
+        int loopcnt = len + 1;
+        if (len == 1) {
+            value = in[count] << 16;
+        } else if (len == 2) {
+            value = in[count] << 16 | in[count+1] << 8;
+        } else if (len == 3) {
+            value = in[count] << 16 | in[count+1] << 8 | in[count+2];
+        }
+
+        unsigned int shift = 18;
+        for (int i = 0; i < loopcnt; i++) {
+            out[outcount] = table[(value & (0x3f << shift)) >> shift];
+            shift -= 6;
+            outcount++;
+        }
+        for (int i = loopcnt; i < 4; i++) {
+            out[outcount] = '=';
+            outcount++;
+        }
+    }
+    out[outcount] = 0;
+    return 0;
 }

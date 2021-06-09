@@ -1,7 +1,0 @@
-language: c
-sudo: required
-compiler: gcc
-dist: xenial
-script:
-  - "make"
-  - "make test"

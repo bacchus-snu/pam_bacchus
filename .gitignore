@@ -76,3 +76,6 @@ tags
 [._]*.un~
 
 # End of https://www.gitignore.io/api/c,vim
+
+pam_bacchus.so
+pam_bacchus_genkey
